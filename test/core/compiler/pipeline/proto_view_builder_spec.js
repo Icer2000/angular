@@ -1,0 +1,86 @@
+import {describe, beforeEach, it, expect, iit, ddescribe, el} from 'test_lib/test_lib';
+import {isPresent} from 'facade/src/lang';
+import {dynamicChangeDetection} from 'change_detection/change_detection';
+import {ElementBinder} from 'core/src/compiler/element_binder';
+import {ProtoViewBuilder} from 'core/src/compiler/pipeline/proto_view_builder';
+import {CompilePipeline} from 'core/src/compiler/pipeline/compile_pipeline';
+import {CompileElement} from 'core/src/compiler/pipeline/compile_element';
+import {CompileStep} from 'core/src/compiler/pipeline/compile_step'
+import {CompileControl} from 'core/src/compiler/pipeline/compile_control';
+import {DOM} from 'facade/src/dom';
+import {MapWrapper} from 'facade/src/collection';
+
+export function main() {
+  describe('ProtoViewBuilder', () => {
+    function createPipeline(variableBindings=null) {
+      return new CompilePipeline([new MockStep((parent, current, control) => {
+        if (isPresent(current.element.getAttribute('viewroot'))) {
+          current.isViewRoot = true;
+        }
+        if (isPresent(current.element.getAttribute('var-binding'))) {
+          current.variableBindings = MapWrapper.createFromStringMap(variableBindings);
+        }
+        current.inheritedElementBinder = new ElementBinder(null, null, null);
+      }), new ProtoViewBuilder(dynamicChangeDetection)]);
+    }
+
+    it('should not create a ProtoView when the isViewRoot flag is not set', () => {
+      var results = createPipeline().process(el('<div></div>'));
+      expect(results[0].inheritedProtoView).toBe(null);
+    });
+
+    it('should create a ProtoView when the isViewRoot flag is set', () => {
+      var viewRootElement = el('<div viewroot></div>');
+      var results = createPipeline().process(viewRootElement);
+      expect(results[0].inheritedProtoView.element).toBe(viewRootElement);
+    });
+
+    it('should inherit the ProtoView down to children that have no isViewRoot set', () => {
+      var viewRootElement = el('<div viewroot><span></span></div>');
+      var results = createPipeline().process(viewRootElement);
+      expect(results[0].inheritedProtoView.element).toBe(viewRootElement);
+      expect(results[1].inheritedProtoView.element).toBe(viewRootElement);
+    });
+
+    it('should save ProtoView into the elementBinder of parent element', () => {
+      var element = el('<div viewroot><template><a viewroot></a></template></div>');
+      var results = createPipeline().process(element);
+      expect(results[1].inheritedElementBinder.nestedProtoView).toBe(results[2].inheritedProtoView);
+    });
+
+    it('should bind variables to the nested ProtoView', () => {
+      var element = el('<div viewroot><template var-binding><a viewroot></a></template></div>');
+      var results = createPipeline({
+        'var1': 'map1',
+        'var2': 'map2'
+      }).process(element);
+      var npv = results[1].inheritedElementBinder.nestedProtoView;
+      expect(npv.variableBindings).toEqual(MapWrapper.createFromStringMap({
+        'var1': 'map1',
+        'var2': 'map2'
+      }));
+    });
+
+    describe('errors', () => {
+
+      it('should not allow multiple nested ProtoViews for the same parent element', () => {
+        var element = el('<div viewroot><template><a viewroot></a><a viewroot></a></template></div>');
+        expect( () => {
+          createPipeline().process(element);
+        }).toThrowError('Only one nested view per element is allowed');
+      });
+
+    });
+
+  });
+}
+
+class MockStep extends CompileStep {
+  processClosure:Function;
+  constructor(process) {
+    this.processClosure = process;
+  }
+  process(parent:CompileElement, current:CompileElement, control:CompileControl) {
+    this.processClosure(parent, current, control);
+  }
+}

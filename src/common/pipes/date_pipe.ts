@@ -16,7 +16,7 @@ import {InvalidPipeArgumentException} from './invalid_pipe_argument_exception';
 
 
 // TODO: move to a global configurable location along with other i18n components.
-var defaultLocale: string = 'en-US';
+var defaultLocale: string = 'de-DE';
 
 /**
  * Formats a date value to a string based on the requested format.
